@@ -29,7 +29,7 @@ Resources:
   WebServerHost:
     Type: AWS::EC2::Instance
     Properties: 
-      ImageId: ami-0bef6cc322bfff646
+      ImageId: ami-018ba43095ff50d08
       InstanceType: t2.micro
       KeyName: !Ref KeyName
       SecurityGroupIds: 
