@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: | 
+CloudFormation template for Phonebook application.
+  
+Parameters:
+  MyVPC:
+   Description: VPC Id of your existing account 
+   Type: AWS::EC2::VPC::Id
+  KeyName:
+   Description: Please enter your keypair 
+   Type: AWS::EC2::KeyPair::Keyname
+  Subnets:
+   Description: Please select your subnets used by ALB
+   Type: List<AWS::EC2::Subnet::Id>
+Resources: 
+
+  ALBSecurtiyGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP for Application Load Balancer # Required
+      SecurityGroupIngress:
+       - IpProtocol: tcp
+         FromPort: 80
+         ToPort: 80
+         CidrIp: 0.0.0.0/0
+      VpcId: !Ref MyVPC
+
+  WebServerSecurtiyGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Enable HTTP for Application Load Balancer # Required
+        SecurityGroupIngress:
+         - IpProtocol: tcp
+           FromPort: 80
+           ToPort: 80
+           CidrIp: 0.0.0.0/0
+         - IpProtocol: tcp
+           FromPort: 22
+           ToPort: 22
+           CidrIp: 0.0.0.0/0
+        VpcId: !Ref MyVPC
+
+  LT:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: ami-079db87dc4c10ac91
+        InstanceType: t2.micro
+        KeyName: !Ref KeyName 
+        SecurityGroupIds:
+          - !GetAtt WebServerSecurtiyGroup.GroupId
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name 
+                Value: !Sub Web Server of ${AWS::StackName} Stack 
+  UserData: 
+    Fn::Base64:
+       !Sub 
+         - |
+          #! /bin/bash
+          yum update -y 
+          yum install pyhton3 -y 
+          pip3 install flask 
+          pip3 install flask_mysql
+          echo "${MyDBURI}" > /home/ec2-user/dbserver.endpoint
+          TOKEN="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"
+          FOLDER="https://$TOKEN@raw.githubusercontent.com/HMZ-VR/aws-14-phonebook-application/main/Project-004-Phonebook-Application/phonebook-app.py"   
+          curl -s --create-dirs -o "/home/ec2-user/templates/index.html" -L "$FOLDER"/templates/index.html
+          curl -s --create-dirs -o "/home/ec2-user/templates/add-update.html" -L "$FOLDER"/templates/add-update.html
+          curl -s --create-dirs -o "/home/ec2-user/templates/delete.html" -L "$FOLDER"/templates/delete.html
+          curl -s --create-dirs -o "/home/ec2-user/app.py" -L "$FOLDER"/phonebook-app.py
+          python3 /home/ec2-user/app.py
+         - MyDBURI: !GetAtt DBInstance.Endpoint.Address
+  TG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP 
+      TargetType: instance 
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref MyVPC: 
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+    IpAddressType: ipv4
+    Scheme: internet-facing
+    SecurityGroups: 
+      - !GetAtt ALBSecurityGroup.GroupId
+    Subnets: !Ref Subnets
+    Type: application 
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargerGroupArn: !Ref TG 
+          Type: forward
+    LoadBalancerArn: !Ref ALB
+    Port: 80
+    Protocol: HTTP  
+  ASG: 
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AvailabilityZones:
+        !GetAZs "" 
+      DesiredCapacity: 2
+      HealtCheckGracePeriod: 300
+      HealtCheckType: ELB
+      LaunchTemplate: 
+        LaunchTemplateId: !Ref LT
+        Version: !GetAtt LT.LatestVersionNumber 
+      MaxSize: 3
+      MinSize: 1
+      TargetGroupARNs:
+        -  !Ref TG 
+
+  DBSecurityGroup:
+    Type: AWS::RDS::DBSecurityGroup
+    Properties:
+      DBSecurityGroupIngress:
+        - EC2SecurityGroupId: !GetAtt WebserverSecurityGroup.GroupId
+      GroupDescription: Back-end Database
+
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 20  
+      AllowMajorVersionUpgrade: false 
+      AutoMinorVersionUpgrade: false 
+      BackupRetentionPeriod: 0 
+      DBInstanceClass: db.t2.micro
+      DBInstanceIdentifier: phonebook-app
+      DBName: clarusway_phonebook
+      DBSecurityGroup: 
+        - !Ref DBSecurityGroup
+      Engine: MySQL
+      EngineVerison: 8.0.32
+      MasterUsername: admin
+      MasterUserPassword: Clarusway_1234
+      Port: 3306
+      PubliclyAccessible: true 
+
+    
+   
+
+ 
+Outputs:
